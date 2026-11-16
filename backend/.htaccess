@@ -1,0 +1,10 @@
+# Fallback for hosts where the subdomain document root cannot point to /public.
+# Forwards all requests into public/ and keeps app code, .env and uploads private.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+<FilesMatch "^\.env|composer\.(json|lock)|spark|\.git">
+    Require all denied
+</FilesMatch>

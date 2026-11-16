@@ -1,0 +1,21 @@
+{
+  "name": "wheelsturn-web",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./resources/css/app.css -o ./public/assets/css/app.css --minify",
+    "watch:css": "tailwindcss -i ./resources/css/app.css -o ./public/assets/css/app.css --watch",
+    "vendor": "node resources/copy-vendor.cjs",
+    "build": "npm run vendor && npm run build:css"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "0.5.10",
+    "alpinejs": "3.14.9",
+    "chart.js": "4.4.9",
+    "signature_pad": "5.0.7",
+    "tailwindcss": "3.4.17",
+    "tom-select": "2.4.3"
+  },
+  "dependencies": {
+    "fullcalendar": "6.1.15"
+  }
+}
