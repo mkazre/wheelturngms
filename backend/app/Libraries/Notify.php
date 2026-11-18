@@ -20,6 +20,45 @@ class Notify
         } catch (\Throwable $e) {
             log_message('error', 'Notification failed: ' . $e->getMessage());
         }
+        // Mirror to the mobile app as a push notification
+        $q = Database::connect()->table('users')->select('id')->where(['is_active' => 1, 'deleted_at' => null])->where('push_token IS NOT NULL')->where('role !=', 'customer');
+        if ($userId) {
+            $q->where('id', $userId);
+        } elseif ($role) {
+            $q->whereIn('role', $role === 'manager' ? ['manager', 'admin'] : [$role]);
+        }
+        self::push(array_map('intval', array_column($q->get()->getResultArray(), 'id')), $title, $body, ['url' => $url]);
+    }
+
+    /**
+     * Send Expo push notifications to users who have the mobile app (fire-and-forget).
+     * @param int[] $userIds
+     */
+    public static function push(array $userIds, string $title, string $body = '', array $data = []): void
+    {
+        if (!$userIds) {
+            return;
+        }
+        $tokens = array_values(array_filter(array_column(Database::connect()->table('users')->select('push_token')->whereIn('id', $userIds)->where('push_token IS NOT NULL')->get()->getResultArray(), 'push_token'),
+            static fn ($t) => is_string($t) && str_starts_with($t, 'ExponentPushToken[')));
+        if (!$tokens) {
+            return;
+        }
+        $messages = array_map(static fn ($t) => ['to' => $t, 'title' => mb_substr($title, 0, 120), 'body' => mb_substr($body, 0, 240), 'data' => $data, 'sound' => 'default', 'channelId' => 'default'], $tokens);
+        try {
+            service('curlrequest', ['timeout' => 8, 'http_errors' => false], null, false)->post('https://exp.host/--/api/v2/push/send', [
+                'json' => $messages, 'headers' => ['Accept' => 'application/json', 'Accept-Encoding' => 'gzip, deflate'],
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'Expo push failed: ' . $e->getMessage());
+        }
+    }
+
+    /** Push to a customer's app login(s). */
+    public static function customer(int $customerId, string $title, string $body = '', array $data = []): void
+    {
+        $ids = array_map('intval', array_column(Database::connect()->table('users')->select('id')->where(['customer_id' => $customerId, 'is_active' => 1, 'deleted_at' => null])->get()->getResultArray(), 'id'));
+        self::push($ids, $title, $body, $data);
     }
 
     /** Notifications visible to the current user (personal, their role, or broadcast). */

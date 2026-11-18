@@ -365,5 +365,65 @@ $routes->group('admin', ['filter' => 'auth:settings'], static function ($routes)
 // ------------------------------------------------------------------ mobile API (Phase 3)
 $routes->group('api/v1', static function ($routes) {
     $routes->post('auth/login', 'Api\Auth::login');
-    $routes->get('me', 'Api\Auth::me', ['filter' => 'api']);
+});
+$routes->group('api/v1', ['filter' => 'api'], static function ($routes) {
+    // Profile & notifications
+    $routes->get('me', 'Api\Ops::me');
+    $routes->post('me/password', 'Api\Ops::changePassword');
+    $routes->post('me/push-token', 'Api\Ops::pushToken');
+    $routes->get('notifications', 'Api\Ops::notifications');
+    $routes->get('files/(:num)', 'Api\Records::file/$1');
+    // Manager / advisor / technician
+    $routes->get('dashboard', 'Api\Ops::dashboard');
+    $routes->get('diary', 'Api\Ops::diary');
+    $routes->post('bookings/(:num)/(:alpha)', 'Api\Ops::booking/$1/$2');
+    $routes->get('tasks', 'Api\Ops::tasks');
+    $routes->post('tasks', 'Api\Ops::createTask');
+    $routes->post('tasks/(:num)/complete', 'Api\Ops::completeTask/$1');
+    $routes->post('ai/ask', 'Api\Ops::aiAsk');
+    $routes->post('ai/fault-codes', 'Api\Ops::aiFaultCodes');
+    $routes->get('vin', 'Api\Ops::decodeVin'); // ?vin=XXXXXXXXXXXXXXXXX
+    $routes->get('board', 'Api\Jobs::board');
+    $routes->get('timer', 'Api\Jobs::activeTimer');
+    $routes->get('jobs', 'Api\Jobs::index');
+    $routes->post('jobs', 'Api\Jobs::store');
+    $routes->get('jobs/(:num)', 'Api\Jobs::show/$1');
+    $routes->post('jobs/(:num)/status', 'Api\Jobs::status/$1');
+    $routes->post('jobs/(:num)/notes', 'Api\Jobs::notes/$1');
+    $routes->post('jobs/(:num)/timer', 'Api\Jobs::timer/$1');
+    $routes->post('jobs/(:num)/checklist', 'Api\Jobs::checklist/$1');
+    $routes->post('jobs/(:num)/inspection', 'Api\Jobs::inspection/$1');
+    $routes->post('jobs/(:num)/damage', 'Api\Jobs::damage/$1');
+    $routes->post('jobs/(:num)/files', 'Api\Jobs::upload/$1');
+    $routes->post('jobs/(:num)/signature', 'Api\Jobs::signature/$1');
+    $routes->post('jobs/(:num)/items', 'Api\Jobs::addItem/$1');
+    $routes->post('jobs/(:num)/items/(:num)/remove', 'Api\Jobs::removeItem/$1/$2');
+    $routes->post('jobs/(:num)/invoice', 'Api\Jobs::invoice/$1');
+    $routes->post('jobs/(:num)/ai-summary', 'Api\Jobs::aiSummary/$1');
+    $routes->get('customers', 'Api\Records::customers');
+    $routes->post('customers', 'Api\Records::createCustomer');
+    $routes->get('customers/(:num)', 'Api\Records::customer/$1');
+    $routes->get('vehicles', 'Api\Records::vehicles');
+    $routes->post('vehicles', 'Api\Records::createVehicle');
+    $routes->get('vehicles/(:num)', 'Api\Records::vehicle/$1');
+    $routes->get('quotes', 'Api\Records::quotes');
+    $routes->get('quotes/(:num)', 'Api\Records::quote/$1');
+    $routes->post('quotes/(:num)/(:alpha)', 'Api\Records::quoteAction/$1/$2');
+    $routes->get('invoices', 'Api\Records::invoices');
+    $routes->get('invoices/(:num)', 'Api\Records::invoice/$1');
+    $routes->post('invoices/(:num)/(:alpha)', 'Api\Records::invoiceAction/$1/$2');
+    $routes->get('products', 'Api\Records::products');
+    $routes->get('packages', 'Api\Records::cannedJobs');
+    $routes->get('staff', 'Api\Records::staff');
+    // Customer app
+    $routes->get('my/overview', 'Api\My::overview');
+    $routes->get('my/jobs/(:num)', 'Api\My::job/$1');
+    $routes->post('my/jobs/(:num)/decide', 'Api\My::decide/$1');
+    $routes->get('my/quotes', 'Api\My::quotes');
+    $routes->get('my/quotes/(:num)', 'Api\My::quote/$1');
+    $routes->post('my/quotes/(:num)/respond', 'Api\My::respondQuote/$1');
+    $routes->get('my/invoices', 'Api\My::invoices');
+    $routes->get('my/vehicles/(:num)', 'Api\My::vehicle/$1');
+    $routes->post('my/bookings', 'Api\My::book');
+    $routes->get('my/services', 'Api\My::services');
 });

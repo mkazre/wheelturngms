@@ -29,7 +29,7 @@ class ApiAuthFilter implements FilterInterface
             return service('response')->setStatusCode(401)->setJSON(['error' => 'Account inactive']);
         }
         // Make the API user available to permission helpers for this request only.
-        session()->set(['user_id' => (int) $user['id'], 'role' => $user['role']]);
+        session()->set(['user_id' => (int) $user['id'], 'role' => $user['role'], 'branch_id' => $user['branch_id'] ? (int) $user['branch_id'] : null]);
         foreach ((array) $arguments as $module) {
             if (!can($module)) {
                 return service('response')->setStatusCode(403)->setJSON(['error' => 'Forbidden']);

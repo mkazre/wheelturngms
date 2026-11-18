@@ -67,48 +67,9 @@ class Diary extends BaseController
     /** Confirm a booking request: match/create customer + vehicle, then create a booked job card. */
     public function confirm(int $id)
     {
-        $b = $this->db->table('bookings')->where('id', $id)->get()->getRowArray();
-        if (!$b || !in_array($b['status'], ['pending', 'confirmed'], true)) {
+        $jobId = \App\Libraries\Bookings::confirm($id);
+        if (!$jobId) {
             return redirect()->back()->with('error', 'Booking not found.');
-        }
-        $this->db->transStart();
-        $phone = \App\Libraries\Notify::normalisePhone($b['phone']);
-        $cust = $b['customer_id'] ? $this->db->table('customers')->where('id', $b['customer_id'])->get()->getRowArray() : null;
-        if (!$cust && $b['email']) {
-            $cust = $this->db->table('customers')->where(['email' => strtolower($b['email']), 'deleted_at' => null])->get()->getRowArray();
-        }
-        if (!$cust && $phone) {
-            foreach ($this->db->table('customers')->select('id, phone')->where('deleted_at', null)->where('phone IS NOT NULL')->get()->getResultArray() as $c) {
-                if (\App\Libraries\Notify::normalisePhone($c['phone']) === $phone) {
-                    $cust = $c;
-                    break;
-                }
-            }
-        }
-        if (!$cust) {
-            [$first, $last] = array_pad(explode(' ', trim((string) $b['name']), 2), 2, '');
-            $this->db->table('customers')->insert(['branch_id' => session('branch_id'), 'code' => Numbering::next('customer'), 'type' => 'individual', 'first_name' => $first, 'last_name' => $last, 'email' => $b['email'] ? strtolower($b['email']) : null, 'phone' => $b['phone'], 'source' => 'Online booking', 'popia_consent_at' => $b['created_at'], 'is_active' => 1, 'created_at' => $this->now(), 'updated_at' => $this->now()]);
-            $cust = ['id' => (int) $this->db->insertID()];
-        }
-        $reg = strtoupper(trim((string) $b['registration']));
-        $veh = $reg ? $this->db->table('vehicles')->where(['registration' => $reg, 'deleted_at' => null])->get()->getRowArray() : null;
-        if (!$veh) {
-            [$make, $model] = array_pad(explode(' ', trim((string) $b['vehicle_desc']), 2), 2, '');
-            $this->db->table('vehicles')->insert(['customer_id' => $cust['id'], 'registration' => $reg ?: 'TBC-' . $id, 'make' => $make ?: null, 'model' => $model ?: null, 'created_at' => $this->now(), 'updated_at' => $this->now()]);
-            $veh = ['id' => (int) $this->db->insertID()];
-        }
-        $this->db->table('job_cards')->insert([
-            'number' => Numbering::next('job_card'), 'branch_id' => session('branch_id'), 'customer_id' => $cust['id'], 'vehicle_id' => $veh['id'], 'status' => 'booked', 'priority' => 'normal',
-            'job_type' => $b['service'], 'customer_complaint' => trim(($b['service'] ? $b['service'] . '. ' : '') . $b['notes']), 'booked_for' => $b['preferred_at'],
-            'public_token' => Billing::token(), 'advisor_id' => session('user_id'), 'created_by' => session('user_id'), 'created_at' => $this->now(), 'updated_at' => $this->now(),
-        ]);
-        $jobId = (int) $this->db->insertID();
-        $this->db->table('bookings')->where('id', $id)->update(['status' => 'converted', 'customer_id' => $cust['id'], 'vehicle_id' => $veh['id'], 'job_card_id' => $jobId, 'updated_at' => $this->now()]);
-        $this->db->transComplete();
-        Activity::log('job_card', $jobId, 'created', 'Created from online booking');
-        if ($b['email']) {
-            Mailer::send($b['email'], 'Booking confirmed: ' . fdatetime($b['preferred_at']), '<p>Hi ' . esc($b['name']) . ',</p><p>Your booking at <b>' . esc(setting('company_name')) . '</b> is <b>confirmed</b> for <b>' . fdatetime($b['preferred_at']) . '</b>.</p><p>' . nl2br(esc(setting('company_address'))) . '</p>'
-                . view('emails/_pay_button', ['url' => site_url('track/' . $this->db->table('job_cards')->select('public_token')->where('id', $jobId)->get()->getRow()->public_token), 'label' => 'Track your vehicle']), [], 'job_card', $jobId);
         }
         return redirect()->to(site_url('job-cards/' . $jobId))->with('success', 'Booking confirmed and job card created. Complete the vehicle details at check-in.');
     }

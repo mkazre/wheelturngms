@@ -120,8 +120,7 @@ class JobCards extends BaseController
             $data['advisor_id'] ??= session('user_id');
             $this->db->table('job_cards')->insert($data);
             $id = (int) $this->db->insertID();
-            $this->seedInspection($id);
-            $this->seedChecklist($id, (string) $data['job_type']);
+            \App\Libraries\JobWorkflow::seed($id, (string) $data['job_type']);
             Activity::log('job_card', $id, 'created', 'Job card ' . $data['number'] . ' opened');
             \App\Libraries\Notify::staff('New job card ' . $data['number'], 'Vehicle checked in', 'job-cards/' . $id, 'wrench', null, 'manager');
         }
@@ -136,37 +135,6 @@ class JobCards extends BaseController
         }
         $this->db->transComplete();
         return redirect()->to(site_url('job-cards/' . $id))->with('success', 'Job card saved.');
-    }
-
-    private function seedInspection(int $jobId): void
-    {
-        $i = 0;
-        foreach (preg_split('/\r?\n/', (string) setting('inspection_template', '')) as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-            [$section, $item] = array_pad(explode('|', $line, 2), 2, null);
-            if ($item === null) {
-                [$section, $item] = ['General', $section];
-            }
-            $this->db->table('inspections')->insert(['job_card_id' => $jobId, 'section' => trim($section), 'item' => trim($item), 'status' => null, 'sort_order' => $i++, 'created_at' => $this->now(), 'updated_at' => $this->now()]);
-        }
-    }
-
-    /** Attach technician checklist steps for this job type (plus "all jobs" templates). */
-    private function seedChecklist(int $jobId, string $jobType): void
-    {
-        $tpls = $this->db->table('checklist_templates')->where('is_active', 1)
-            ->groupStart()->where('job_type', null)->orWhere('job_type', '')->orWhere('job_type', $jobType)->groupEnd()->get()->getResultArray();
-        $i = 0;
-        foreach ($tpls as $t) {
-            foreach (preg_split('/\r?\n/', (string) $t['items']) as $step) {
-                if (($step = trim($step)) !== '') {
-                    $this->db->table('job_checklist_items')->insert(['job_card_id' => $jobId, 'item' => mb_substr($step, 0, 255), 'sort_order' => $i++, 'created_at' => $this->now(), 'updated_at' => $this->now()]);
-                }
-            }
-        }
     }
 
     /** AJAX: tick / untick a checklist step, or add a custom one. */
@@ -242,23 +210,7 @@ class JobCards extends BaseController
         if ($this->isMechanic() && in_array($status, ['invoiced', 'collected', 'cancelled'], true)) {
             return $this->respondStatus(false, 'Only the service desk can make that change.');
         }
-        $update = ['status' => $status, 'updated_at' => $this->now()];
-        $stamp = ['checked_in' => 'checked_in_at', 'in_progress' => 'started_at', 'completed' => 'completed_at', 'collected' => 'collected_at'];
-        if (isset($stamp[$status]) && empty($job[$stamp[$status]])) {
-            $update[$stamp[$status]] = $this->now();
-        }
-        if ($status === 'collected' && ($odo = (int) $this->request->getPost('odometer_out'))) {
-            $update['odometer_out'] = $odo;
-        }
-        $this->db->table('job_cards')->where('id', $id)->update($update);
-        $label = job_statuses()[$status]['label'];
-        Activity::log('job_card', $id, 'status', 'Status changed to ' . $label);
-
-        $notified = false;
-        if ($status === 'completed' && (int) setting('notify_vehicle_ready', 1) === 1 && $job['status'] !== 'completed') {
-            $notified = Billing::sendVehicleReady($id);
-        }
-        return $this->respondStatus(true, 'Status updated to ' . $label . ($notified ? ' · customer notified' : ''));
+        return $this->respondStatus(true, \App\Libraries\JobWorkflow::changeStatus($job, $status, (int) $this->request->getPost('odometer_out')));
     }
 
     private function respondStatus(bool $ok, string $msg)
@@ -298,23 +250,8 @@ class JobCards extends BaseController
     /** Clock on / clock off the current technician. */
     public function timer(int $id)
     {
-        $uid = (int) session('user_id');
-        $running = $this->db->table('time_logs')->where(['user_id' => $uid, 'ended_at' => null])->get()->getRowArray();
-        if ($running) {
-            $mins = max(1, (int) round((time() - strtotime($running['started_at'])) / 60));
-            $this->db->table('time_logs')->where('id', $running['id'])->update(['ended_at' => $this->now(), 'minutes' => $mins, 'updated_at' => $this->now()]);
-            Activity::log('job_card', (int) $running['job_card_id'], 'clock_off', 'Clocked off after ' . $mins . ' min');
-            if ((int) $running['job_card_id'] === $id) {
-                return redirect()->back()->with('success', 'Clocked off · ' . $mins . ' minutes logged.');
-            }
-        }
-        $this->db->table('time_logs')->insert(['job_card_id' => $id, 'user_id' => $uid, 'started_at' => $this->now(), 'note' => $this->input('note'), 'created_at' => $this->now(), 'updated_at' => $this->now()]);
-        $job = $this->db->table('job_cards')->select('status, started_at')->where('id', $id)->get()->getRowArray();
-        if (in_array($job['status'], ['booked', 'checked_in'], true)) {
-            $this->db->table('job_cards')->where('id', $id)->update(['status' => 'in_progress', 'started_at' => $job['started_at'] ?: $this->now()]);
-        }
-        Activity::log('job_card', $id, 'clock_on', 'Clocked on');
-        return redirect()->back()->with('success', 'Clocked on. Timer running.');
+        [, $msg] = \App\Libraries\JobWorkflow::toggleTimer($id, (int) session('user_id'));
+        return redirect()->back()->with('success', $msg);
     }
 
     public function signature(int $id)

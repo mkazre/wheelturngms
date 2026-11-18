@@ -12,7 +12,11 @@ class Auth extends BaseController
 {
     public function login()
     {
-        $in = $this->request->getJSON(true) ?: $this->request->getPost();
+        try {
+            $in = $this->request->getJSON(true) ?: $this->request->getPost();
+        } catch (\Throwable $e) {
+            $in = $this->request->getPost();
+        }
         $email = strtolower(trim((string) ($in['email'] ?? '')));
         if (service('throttler')->check(md5('api' . $this->request->getIPAddress() . $email), 10, 600) === false) {
             return $this->json(['error' => 'Too many attempts. Try again in a few minutes.'], 429);
